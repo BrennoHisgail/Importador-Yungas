@@ -1,12 +1,6 @@
 # extrator_drive.py
 
-"""Script orquestrador para a Fase 1 do processo de importação.
-
-Lê a configuração de um arquivo config.ini, extrai uma estrutura de arquivos 
-do Google Drive, cria a estrutura de pastas local antecipadamente, gerencia o
-estado para retomada de downloads, verifica a integridade e cria um backlog
-detalhado e um backup compactado.
-"""
+"""Script orquestrador para a Fase 1 do processo de importação."""
 
 import argparse
 import logging
@@ -34,7 +28,6 @@ def load_state(state_filepath: str) -> Optional[List[Dict]]:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"Erro ao ler o arquivo de estado: {e}. Um novo será criado.")
-            return None
     logging.info("Nenhum estado anterior encontrado.")
     return None
 
@@ -51,7 +44,6 @@ def write_backlog_csv(records: List[Dict], client_name: str) -> None:
     """Escreve uma lista de registros de processamento em um arquivo CSV."""
     if not records:
         return
-    
     backlog_filepath = f"backlog_{client_name}_{datetime.datetime.now().strftime('%Y-%m-%d')}.csv"
     headers = [
         'timestamp', 'status', 'drive_id', 'original_name', 'sanitized_name', 
@@ -94,6 +86,9 @@ def verify_downloads(drive_inventory: List[str], local_inventory: List[str]) -> 
 
 def create_backup(source_dir: str, backup_dir: str, client_name: str) -> bool:
     """Cria um arquivo .zip de um diretório de origem."""
+    if not os.path.isdir(source_dir):
+        logging.warning(f"Diretório de origem '{source_dir}' não encontrado. Backup ignorado.")
+        return False
     os.makedirs(backup_dir, exist_ok=True)
     try:
         timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
@@ -141,23 +136,20 @@ def main() -> None:
     tasks = load_state(state_filepath)
     if not tasks:
         logging.info("Iniciando fase de planejamento: mapeando todos os arquivos no Drive...")
-        inventory = get_drive_file_inventory(drive_service, args.drive_folder_id)
-        tasks = inventory
+        tasks = get_drive_file_inventory(drive_service, args.drive_folder_id)
         save_state(tasks, state_filepath)
         logging.info(f"Novo plano de download com {len(tasks)} itens foi criado.")
 
-    # --- NOVA ETAPA: CRIAÇÃO ANTECIPADA DE PASTAS ---
-    logging.info("Iniciando fase de estruturação: criando a árvore de diretórios local...")
+    logging.info("Iniciando/Retomando processo de download...")
+    total_tasks = len(tasks)
+    backlog_records = []
+    
+    # Etapa de criação de pastas antecipada
     dir_paths_to_create = {os.path.dirname(task['relative_path']) for task in tasks if os.path.dirname(task['relative_path'])}
     for unique_dir in sorted(list(dir_paths_to_create)):
         full_dir_path = os.path.join(downloads_dir, unique_dir)
         os.makedirs(full_dir_path, exist_ok=True)
     logging.info("Estrutura de diretórios local criada/verificada com sucesso.")
-    # --- FIM DA NOVA ETAPA ---
-
-    logging.info("Iniciando/Retomando processo de download...")
-    total_tasks = len(tasks)
-    backlog_records = []
     
     for index, task in enumerate(tasks):
         expected_path = task['relative_path']
@@ -166,14 +158,14 @@ def main() -> None:
             expected_path = f"{path_root}.pdf"
         local_filepath = os.path.join(downloads_dir, expected_path)
 
-        if task['status'] == 'concluido' or (task['status'] == 'pendente' and os.path.exists(local_filepath)):
+        if task['status'] in ['concluido', 'ignorado'] or (task['status'] == 'pendente' and os.path.exists(local_filepath)):
             if task['status'] == 'pendente':
                 task['status'] = 'concluido'
-            logging.info(f"--- [ {index + 1} / {total_tasks} ] Pulando arquivo já existente: {task['safe_name']} ---")
+            logging.info(f"--- [ {index + 1} / {total_tasks} ] Pulando item: {task['safe_name']} (Status: {task['status']}) ---")
             continue
         
         if task['status'] == 'pendente':
-            logging.info(f"--- [ {index + 1} / {total_tasks} ] ---")
+            logging.info(f"--- [ {index + 1} / {total_tasks} ] Processando: {task['safe_name']} ---")
             download_dir = os.path.join(downloads_dir, os.path.dirname(task['relative_path']))
             
             result: Dict
@@ -193,10 +185,10 @@ def main() -> None:
                 'error_message': result['error'], 'md5_checksum': task.get('md5Checksum')
             }
             backlog_records.append(record)
-    
+
     save_state(tasks, state_filepath)
     
-    logging.info("Processo de download finalizado. Iniciando verificação final e geração de relatórios...")
+    logging.info("Processo de download finalizado. Iniciando relatórios e verificação...")
     
     write_backlog_csv(backlog_records, args.client_name)
     

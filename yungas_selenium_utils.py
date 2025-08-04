@@ -1,15 +1,35 @@
 # yungas_selenium_utils.py
 
+"""Módulo de utilitários para automação da interface web da Yungas usando Selenium.
+
+Fornece funcionalidades para inicializar um driver de navegador furtivo,
+executar o fluxo de login de duas etapas e, futuramente, interagir com
+o módulo de materiais.
+"""
+
 import logging
 import time
 from typing import Optional
 
-# O import principal agora é do 'undetected_chromedriver'
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+
+# --- Constants for Selectors and Configuration ---
+# Centralizar seletores aqui facilita a manutenção se a interface da Yungas mudar.
+YUNGAS_BASE_URL = "https://app.yungas.com.br"
+LOGIN_TIMEOUT_SECONDS = 20
+POST_LOGIN_TIMEOUT_SECONDS = 60
+
+# --- Selectors for Login Flow ---
+EMAIL_FIELD_ID = "username-password"
+CONTINUE_BUTTON_ID = "submit-button"
+PASSWORD_FIELD_ID = "password"
+FINAL_LOGIN_BUTTON_ID = "password-submit-button"
+POST_LOGIN_SUCCESS_XPATH = "//span[text()='Caixa de entrada']"
+
 
 def iniciar_driver() -> Optional[WebDriver]:
     """Inicializa e retorna uma instância do Undetected ChromeDriver.
@@ -17,53 +37,60 @@ def iniciar_driver() -> Optional[WebDriver]:
     Esta versão é projetada para ser menos detectável por sistemas anti-robô.
     """
     try:
-        # Usamos uc.Chrome() em vez de webdriver.Chrome()
-        driver = uc.Chrome()
+        # Configurações para tentar parecer mais humano
+        options = uc.ChromeOptions()
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        
+        driver = uc.Chrome(options=options)
         logging.info("Undetected ChromeDriver iniciado com sucesso.")
         return driver
     except Exception as e:
-        logging.error(f"Erro ao iniciar o Undetected ChromeDriver. Verifique sua conexão e instalação. Erro: {e}")
+        logging.error(f"Erro ao iniciar o Undetected ChromeDriver: {e}")
         return None
 
 def fazer_login(driver: WebDriver, user: str, password: str) -> bool:
-    """Navega pelo fluxo de login de 2 etapas da Yungas."""
-    try:
-        url_login = "https://app.yungas.com.br"
-        driver.get(url_login)
-        driver.maximize_window()
-        logging.info(f"Navegando para a página de login: {url_login}")
-        
-        wait = WebDriverWait(driver, 20)
+    """Navega pelo fluxo de login de 2 etapas da Yungas.
 
-        # --- Etapa 1: Inserir o E-mail ---
+    Args:
+        driver (WebDriver): A instância do navegador a ser controlada.
+        user (str): O nome de usuário para o login.
+        password (str): A senha para o login.
+
+    Returns:
+        bool: True se o login for bem-sucedido, False caso contrário.
+    """
+    try:
+        driver.get(YUNGAS_BASE_URL)
+        driver.maximize_window()
+        logging.info(f"Navegando para a página inicial: {YUNGAS_BASE_URL}")
+        
+        wait = WebDriverWait(driver, LOGIN_TIMEOUT_SECONDS)
+
+        # Etapa 1: Inserir o E-mail
         logging.info("Procurando campo de e-mail...")
-        campo_usuario = wait.until(EC.presence_of_element_located((By.ID, 'username-password')))
+        campo_usuario = wait.until(EC.presence_of_element_located((By.ID, EMAIL_FIELD_ID)))
         campo_usuario.send_keys(user)
         
-        logging.info("Procurando botão 'Continuar'...")
-        # Assumindo que o ID que você encontrou para o botão é 'submit-button'
-        driver.find_element(By.ID, 'submit-button').click()
+        logging.info("Clicando em 'Continuar'...")
+        driver.find_element(By.ID, CONTINUE_BUTTON_ID).click()
         
-        # --- Pausa Estratégica ---
-        logging.info("Pausando por 15 segundos para aguardar o carregamento da página de senha e do CAPTCHA...")
+        # Pausa Estratégica
+        logging.info("Pausando por 15 segundos para aguardar a página de senha...")
         time.sleep(15)
         
-        # --- Etapa 2: Inserir a Senha ---
+        # Etapa 2: Inserir a Senha
         logging.info("Procurando campo de senha...")
-        # Assumindo que o ID do campo de senha é 'password'
-        campo_senha = wait.until(EC.presence_of_element_located((By.ID, 'password')))
+        campo_senha = wait.until(EC.presence_of_element_located((By.ID, PASSWORD_FIELD_ID)))
         campo_senha.send_keys(password)
         
-        # --- Etapa 3: Clicar em Entrar e Aguardar ---
-        logging.info("Procurando botão final 'Entrar'...")
-        # Assumindo que o ID do botão final é 'password-submit-button'
-        driver.find_element(By.ID, 'password-submit-button').click()
+        # Etapa 3: Clicar em Entrar e Aguardar Confirmação
+        logging.info("Clicando no botão final 'Entrar'...")
+        driver.find_element(By.ID, FINAL_LOGIN_BUTTON_ID).click()
         
-        logging.info("Aguardando confirmação de login (até 60 segundos)...")
+        logging.info(f"Aguardando confirmação de login por até {POST_LOGIN_TIMEOUT_SECONDS} segundos...")
         
-        long_wait = WebDriverWait(driver, 60)
-        # Espera pelo elemento 'Caixa de entrada' para confirmar o sucesso do login.
-        long_wait.until(EC.presence_of_element_located((By.XPATH, "//span[text()='Caixa de entrada']")))
+        long_wait = WebDriverWait(driver, POST_LOGIN_TIMEOUT_SECONDS)
+        long_wait.until(EC.presence_of_element_located((By.XPATH, POST_LOGIN_SUCCESS_XPATH)))
         
         logging.info("Login finalizado com sucesso!")
         return True

@@ -1,6 +1,10 @@
 # drive_utils.py
 
-"""Módulo de utilitários para interagir com a API do Google Drive v3."""
+"""Módulo de utilitários para interagir com a API do Google Drive v3.
+
+Fornece funcionalidades para autenticação, download e exportação recursiva de arquivos,
+sanitização de nomes, e geração de inventário de uma estrutura de pastas para verificação.
+"""
 
 import os
 import logging
@@ -136,7 +140,8 @@ def get_drive_file_inventory(service: Resource, folder_id: str, parent_path: str
     try:
         fields = "files(id, name, mimeType, md5Checksum)"
         query = f"'{folder_id}' in parents and trashed = false"
-        results = service.files().list(q=query, pageSize=1000, fields=fields).execute() # Adicionar paginação aqui se necessário
+        # Adicionar aqui a lógica de paginação se necessário no futuro
+        results = service.files().list(q=query, pageSize=1000, fields=fields).execute()
         items = results.get('files', [])
         for item in items:
             safe_name = _sanitize_path_component(item['name'])
@@ -152,10 +157,7 @@ def get_drive_file_inventory(service: Resource, folder_id: str, parent_path: str
                     'md5Checksum': item.get('md5Checksum'),
                     'mimeType': item['mimeType']
                 }
-                if item['mimeType'] in ignored_mime_types:
-                    task['status'] = 'ignorado'
-                else:
-                    task['status'] = 'pendente'
+                task['status'] = 'ignorado' if item['mimeType'] in ignored_mime_types else 'pendente'
                 inventory.append(task)
     except Exception as e:
         logging.error(f"Falha ao gerar o inventário do Drive para a pasta ID '{folder_id}': {e}")
