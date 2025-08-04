@@ -1,0 +1,18 @@
+# Arquivos de credenciais e estado 
+credentials/
+*.json
+.state/
+
+# Arquivos gerados pela execução do script
+downloads/
+backups/
+*.log
+*.csv
+
+# Arquivos de sistema do Python
+__pycache__/
+*.pyc
+
+# Arquivos de ambiente virtual
+venv/
+.venv/
