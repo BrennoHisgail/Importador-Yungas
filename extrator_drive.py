@@ -3,8 +3,9 @@
 """Script orquestrador para a Fase 1 do processo de importação.
 
 Lê a configuração de um arquivo config.ini, extrai uma estrutura de arquivos 
-do Google Drive, gerencia o estado para retomada de downloads, verifica a 
-integridade, e cria um backlog detalhado e um backup compactado.
+do Google Drive, cria a estrutura de pastas local antecipadamente, gerencia o
+estado para retomada de downloads, verifica a integridade e cria um backlog
+detalhado e um backup compactado.
 """
 
 import argparse
@@ -40,7 +41,6 @@ def load_state(state_filepath: str) -> Optional[List[Dict]]:
 def save_state(state: List[Dict], state_filepath: str) -> None:
     """Salva o estado atual da extração em um arquivo JSON."""
     try:
-        # Garante que o diretório para o arquivo de estado exista.
         os.makedirs(os.path.dirname(state_filepath), exist_ok=True)
         with open(state_filepath, 'w', encoding='utf-8') as f:
             json.dump(state, f, indent=4, ensure_ascii=False)
@@ -109,7 +109,6 @@ def create_backup(source_dir: str, backup_dir: str, client_name: str) -> bool:
 
 def main() -> None:
     """Ponto de entrada principal para a execução do script de extração."""
-    # 1. Carrega a configuração do arquivo .ini
     config = configparser.ConfigParser()
     config.read('config.ini')
 
@@ -118,7 +117,6 @@ def main() -> None:
     state_dir = config['Paths']['state_dir']
     log_filename = config['Logging']['log_filename']
     
-    # 2. Configura o logging usando o nome do arquivo do .ini
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s - %(levelname)s - %(message)s',
                         handlers=[
@@ -126,7 +124,6 @@ def main() -> None:
                             logging.StreamHandler()
                         ])
     
-    # 3. Configura os argumentos de linha de comando
     parser = argparse.ArgumentParser(description="Fase 1: Ferramenta para extrair arquivos do Google Drive.")
     parser.add_argument('--drive-folder-id', required=True, help='ID da pasta raiz no Google Drive.')
     parser.add_argument('--client-name', required=True, help='Nome do cliente para o backup e arquivo de estado.')
@@ -141,7 +138,6 @@ def main() -> None:
         logging.critical("Falha na conexão com o Google Drive. Processo abortado.")
         return
 
-    # 4. Lógica de retomada ou planejamento
     tasks = load_state(state_filepath)
     if not tasks:
         logging.info("Iniciando fase de planejamento: mapeando todos os arquivos no Drive...")
@@ -150,7 +146,15 @@ def main() -> None:
         save_state(tasks, state_filepath)
         logging.info(f"Novo plano de download com {len(tasks)} itens foi criado.")
 
-    # 5. Loop principal de execução
+    # --- NOVA ETAPA: CRIAÇÃO ANTECIPADA DE PASTAS ---
+    logging.info("Iniciando fase de estruturação: criando a árvore de diretórios local...")
+    dir_paths_to_create = {os.path.dirname(task['relative_path']) for task in tasks if os.path.dirname(task['relative_path'])}
+    for unique_dir in sorted(list(dir_paths_to_create)):
+        full_dir_path = os.path.join(downloads_dir, unique_dir)
+        os.makedirs(full_dir_path, exist_ok=True)
+    logging.info("Estrutura de diretórios local criada/verificada com sucesso.")
+    # --- FIM DA NOVA ETAPA ---
+
     logging.info("Iniciando/Retomando processo de download...")
     total_tasks = len(tasks)
     backlog_records = []
@@ -190,9 +194,8 @@ def main() -> None:
             }
             backlog_records.append(record)
     
-    save_state(tasks, state_filepath) # Salva o estado final após o loop
-
-    # 6. Geração de relatórios, verificação e backup
+    save_state(tasks, state_filepath)
+    
     logging.info("Processo de download finalizado. Iniciando verificação final e geração de relatórios...")
     
     write_backlog_csv(backlog_records, args.client_name)
@@ -200,7 +203,7 @@ def main() -> None:
     final_tasks = tasks
     drive_inventory_paths = []
     for t in final_tasks:
-        if t['status'] == 'ignorado' or t['status'] == 'falha':
+        if t['status'] in ['ignorado', 'falha']:
             continue
         path = t['relative_path']
         if 'google-apps' in t.get('mimeType', ''):
