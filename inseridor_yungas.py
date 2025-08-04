@@ -1,24 +1,24 @@
-# inseridor_yungas.py
-
 """Script orquestrador para a Fase 2: Inserção na Plataforma Yungas.
 
-Nesta fase inicial, o script é usado para testar a funcionalidade de login do robô
-e verificar a configuração do ambiente Selenium.
+Nesta fase, o script é usado para testar as funcionalidades de login,
+navegação e criação de uma pasta de teste.
 """
 
 import argparse
 import logging
 import time
 
-# Importa as funções de controle do robô do nosso módulo de utilitários
-from yungas_selenium_utils import iniciar_driver, fazer_login
+# Importamos a nova função de teste que criamos
+from yungas_selenium_utils import (
+    iniciar_driver, 
+    fazer_login, 
+    navegar_para_materiais, 
+    criar_pasta_teste
+)
 
 def main() -> None:
     """
     Ponto de entrada principal para o script de inserção.
-
-    Configura o ambiente, parseia os argumentos de linha de comando,
-    inicia o driver do Selenium e executa o teste de login.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -30,27 +30,25 @@ def main() -> None:
     parser.add_argument('--yungas-pass', required=True, help='Senha de acesso da plataforma Yungas.')
     args = parser.parse_args()
 
-    logging.info("Iniciando Fase 2: Robô de Inserção.")
+    logging.info("Iniciando Fase 2: Teste de Criação de Pasta.")
     driver = iniciar_driver()
 
     if driver:
         try:
-            login_successful = fazer_login(driver, args.yungas_user, args.yungas_pass)
-            
-            if login_successful:
-                logging.info("Teste de login BEM-SUCEDIDO! Pausando por 15 segundos para verificação visual.")
-                # Pausa para permitir que o usuário observe o resultado no navegador.
-                time.sleep(15) 
-            else:
-                logging.error("O teste de login FALHOU. Verifique os seletores no 'yungas_selenium_utils.py' e as credenciais.")
+            if fazer_login(driver, args.yungas_user, args.yungas_pass):
+                if navegar_para_materiais(driver):
+                    # Se o login e a navegação deram certo, TENTA CRIAR A PASTA
+                    # Gera um nome único para a pasta usando o timestamp atual
+                    nome_pasta_teste = f"Pasta de Teste do Robô - {int(time.time())}"
+                    
+                    criar_pasta_teste(driver, nome_pasta_teste)
+                    
+                    logging.info("Teste de criação de pasta concluído! Pausando por 15 segundos...")
+                    time.sleep(15)
         
         finally:
-            # O bloco 'finally' garante que o navegador seja sempre fechado,
-            # mesmo que ocorra um erro inesperado durante o login.
             driver.quit()
             logging.info("Navegador fechado.")
-    else:
-        logging.error("Não foi possível iniciar o WebDriver. A execução foi abortada.")
 
 if __name__ == "__main__":
     main()
