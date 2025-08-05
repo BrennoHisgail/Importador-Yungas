@@ -1,6 +1,13 @@
 # extrator_drive.py
 
-"""Script orquestrador para a Fase 1 do processo de importação."""
+"""Script orquestrador para a Fase 1 do processo de importação.
+
+Lê a configuração de um arquivo config.ini, extrai uma estrutura de arquivos 
+do Google Drive, gerencia o estado para retomada de downloads, verifica a 
+integridade e cria um backlog detalhado e um backup compactado.
+
+Possui um modo '--structure-only' para criar apenas a árvore de diretórios local.
+"""
 
 import argparse
 import logging
@@ -19,6 +26,9 @@ from drive_utils import (
     export_google_doc
 )
 
+# ... (Todas as funções auxiliares: load_state, save_state, write_backlog_csv, 
+# get_local_file_inventory, verify_downloads, create_backup permanecem exatamente iguais) ...
+
 def load_state(state_filepath: str) -> Optional[List[Dict]]:
     """Carrega o estado da extração de um arquivo JSON."""
     if os.path.exists(state_filepath):
@@ -28,7 +38,6 @@ def load_state(state_filepath: str) -> Optional[List[Dict]]:
                 return json.load(f)
         except (json.JSONDecodeError, IOError) as e:
             logging.error(f"Erro ao ler o arquivo de estado: {e}. Um novo será criado.")
-    logging.info("Nenhum estado anterior encontrado.")
     return None
 
 def save_state(state: List[Dict], state_filepath: str) -> None:
@@ -102,6 +111,7 @@ def create_backup(source_dir: str, backup_dir: str, client_name: str) -> bool:
         logging.error(f"Falha ao criar o backup: {e}")
         return False
 
+
 def main() -> None:
     """Ponto de entrada principal para a execução do script de extração."""
     config = configparser.ConfigParser()
@@ -122,6 +132,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Fase 1: Ferramenta para extrair arquivos do Google Drive.")
     parser.add_argument('--drive-folder-id', required=True, help='ID da pasta raiz no Google Drive.')
     parser.add_argument('--client-name', required=True, help='Nome do cliente para o backup e arquivo de estado.')
+    # --- NOVA FLAG ---
+    parser.add_argument('--structure-only', action='store_true', help='Se presente, cria apenas a estrutura de pastas e encerra.')
     args = parser.parse_args()
     
     state_filepath = os.path.join(state_dir, f"download_state_{args.client_name}.json")
@@ -140,18 +152,27 @@ def main() -> None:
         save_state(tasks, state_filepath)
         logging.info(f"Novo plano de download com {len(tasks)} itens foi criado.")
 
-    logging.info("Iniciando/Retomando processo de download...")
-    total_tasks = len(tasks)
-    backlog_records = []
-    
-    # Etapa de criação de pastas antecipada
+    # --- ETAPA DE CRIAÇÃO ANTECIPADA DE PASTAS ---
+    logging.info("Iniciando fase de estruturação: criando a árvore de diretórios local...")
     dir_paths_to_create = {os.path.dirname(task['relative_path']) for task in tasks if os.path.dirname(task['relative_path'])}
     for unique_dir in sorted(list(dir_paths_to_create)):
         full_dir_path = os.path.join(downloads_dir, unique_dir)
         os.makedirs(full_dir_path, exist_ok=True)
     logging.info("Estrutura de diretórios local criada/verificada com sucesso.")
     
+    # --- VERIFICAÇÃO DA NOVA FLAG ---
+    if args.structure_only:
+        logging.info("Modo --structure-only ativado. Encerrando o script.")
+        logging.info("--- FASE 1 (APENAS ESTRUTURA) CONCLUÍDA COM SUCESSO ---")
+        return
+
+    # Se a flag não for usada, o resto do script continua normalmente
+    logging.info("Iniciando/Retomando processo de download...")
+    total_tasks = len(tasks)
+    backlog_records = []
+    
     for index, task in enumerate(tasks):
+        # ... (o resto da lógica de download, verificação e backup continua exatamente igual) ...
         expected_path = task['relative_path']
         if 'google-apps' in task.get('mimeType', ''):
             path_root, _ = os.path.splitext(expected_path)
@@ -185,7 +206,7 @@ def main() -> None:
                 'error_message': result['error'], 'md5_checksum': task.get('md5Checksum')
             }
             backlog_records.append(record)
-
+    
     save_state(tasks, state_filepath)
     
     logging.info("Processo de download finalizado. Iniciando relatórios e verificação...")
@@ -213,6 +234,7 @@ def main() -> None:
     else:
         logging.error("O backup foi ignorado devido a arquivos faltantes na extração.")
         logging.info("--- FASE 1 CONCLUÍDA COM ERROS ---")
+
 
 if __name__ == "__main__":
     main()

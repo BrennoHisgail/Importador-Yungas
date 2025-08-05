@@ -1,51 +1,77 @@
-"""Script orquestrador para a Fase 2: Inserção na Plataforma Yungas.
+# inseridor_yungas.py
 
-Nesta fase, o script é usado para testar as funcionalidades de login,
-navegação e criação de uma pasta de teste.
-"""
+"""Script orquestrador para a Fase 2: Inserção na Plataforma Yungas."""
 
 import argparse
 import logging
-import time
+import os
+import configparser
+from typing import List
 
-# Importamos a nova função de teste que criamos
 from yungas_selenium_utils import (
     iniciar_driver, 
     fazer_login, 
-    navegar_para_materiais, 
-    criar_pasta_teste
+    navegar_para_materiais,
+    garantir_existencia_da_pasta
 )
 
+def get_local_folder_structure(root_dir: str) -> List[str]:
+    """
+    Lê uma estrutura de diretórios local e retorna uma lista ordenada de caminhos relativos.
+    """
+    folder_paths = set()
+    if not os.path.isdir(root_dir):
+        logging.warning(f"Diretório de downloads '{root_dir}' não encontrado.")
+        return []
+        
+    for dirpath, _, _ in os.walk(root_dir):
+        relative_path = os.path.relpath(dirpath, root_dir)
+        # Ignora o diretório raiz (representado por '.')
+        if relative_path != '.':
+            folder_paths.add(relative_path.replace('\\', '/'))
+    
+    # Ordena a lista para garantir que as pastas pai sejam criadas antes das filhas
+    return sorted(list(folder_paths))
+
 def main() -> None:
-    """
-    Ponto de entrada principal para o script de inserção.
-    """
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    """Ponto de entrada principal para o script de inserção."""
+    
+    config = configparser.ConfigParser()
+    config.read('config.ini')
+    downloads_dir = config['Paths']['downloads_dir']
+    
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     parser = argparse.ArgumentParser(description="Fase 2: Robô para inserir arquivos na Yungas.")
     parser.add_argument('--yungas-user', required=True, help='Usuário de acesso da plataforma Yungas.')
     parser.add_argument('--yungas-pass', required=True, help='Senha de acesso da plataforma Yungas.')
     args = parser.parse_args()
 
-    logging.info("Iniciando Fase 2: Teste de Criação de Pasta.")
+    logging.info("Iniciando Fase 2: Robô de Inserção.")
     driver = iniciar_driver()
 
     if driver:
         try:
             if fazer_login(driver, args.yungas_user, args.yungas_pass):
                 if navegar_para_materiais(driver):
-                    # Se o login e a navegação deram certo, TENTA CRIAR A PASTA
-                    # Gera um nome único para a pasta usando o timestamp atual
-                    nome_pasta_teste = f"Pasta de Teste do Robô - {int(time.time())}"
                     
-                    criar_pasta_teste(driver, nome_pasta_teste)
+                    # --- ETAPA 1: SINCRONIZAÇÃO DE PASTAS ---
+                    logging.info("Iniciando fase de sincronização de pastas...")
+                    pastas_a_sincronizar = get_local_folder_structure(downloads_dir)
                     
-                    logging.info("Teste de criação de pasta concluído! Pausando por 15 segundos...")
-                    time.sleep(15)
-        
+                    if not pastas_a_sincronizar:
+                        logging.info("Nenhuma estrutura de pastas encontrada em '/downloads' para sincronizar.")
+                    else:
+                        logging.info(f"{len(pastas_a_sincronizar)} pastas para sincronizar.")
+                        for pasta in pastas_a_sincronizar:
+                            sucesso = garantir_existencia_da_pasta(driver, pasta)
+                            if not sucesso:
+                                logging.error(f"Erro crítico ao criar a pasta '{pasta}'. Abortando.")
+                                break # Interrompe o processo se uma pasta falhar
+                    
+                    logging.info("Fase de sincronização de pastas concluída.")
+                    # Aqui, no futuro, começaria a Etapa 2: Upload de Arquivos
+
         finally:
             driver.quit()
             logging.info("Navegador fechado.")
