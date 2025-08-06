@@ -85,8 +85,7 @@ def navegar_para_materiais(driver: WebDriver) -> bool:
 
 def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bool:
     """
-    Garante que uma estrutura de pastas exista na Yungas, criando-a se necessário.
-    Navega para a pasta final ao concluir.
+    Garante que uma estrutura de pastas exista na Yungas, com esperas inteligentes.
     """
     try:
         logging.info(f"Processando caminho de pasta: '{caminho_da_pasta}'")
@@ -100,13 +99,11 @@ def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bo
             time.sleep(2) # Pausa para a interface carregar a lista de pastas
 
             try:
-                # Tenta encontrar a pasta que já existe
                 seletor_pasta_existente = FOLDER_BY_NAME_XPATH % nome_da_pasta
                 pasta = wait.until(EC.presence_of_element_located((By.XPATH, seletor_pasta_existente)))
                 logging.info(f"Pasta '{nome_da_pasta}' encontrada. Entrando...")
-                pasta.click()
+                driver.execute_script("arguments[0].click();", pasta)
             except TimeoutException:
-                # Se a pasta não for encontrada, a criamos
                 logging.info(f"Pasta '{nome_da_pasta}' não encontrada. Criando...")
                 
                 botao_criar_pasta = wait.until(EC.element_to_be_clickable((By.XPATH, CREATE_FOLDER_BUTTON_XPATH)))
@@ -118,10 +115,17 @@ def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bo
                 botao_confirmar = wait.until(EC.element_to_be_clickable((By.XPATH, CONFIRM_CREATE_FOLDER_BUTTON_XPATH)))
                 botao_confirmar.click()
                 
-                logging.info("Aguardando pasta ser criada...")
-                time.sleep(2)
+                # --- INÍCIO DA MUDANÇA: ESPERA INTELIGENTE ---
+                logging.info("Aguardando a conclusão da criação da pasta...")
+                # A melhor forma de saber que o pop-up fechou é esperar que um elemento da
+                # página principal, como o próprio botão "Nova pasta", fique clicável novamente.
+                wait.until(EC.element_to_be_clickable((By.XPATH, CREATE_FOLDER_BUTTON_XPATH)))
+                logging.info("Criação concluída. A interface está pronta para a próxima ação.")
+                # --- FIM DA MUDANÇA ---
+                
+                # Agora que a UI está estável, procuramos pela nova pasta para entrar nela.
                 pasta_recem_criada = wait.until(EC.presence_of_element_located((By.XPATH, seletor_pasta_existente)))
-                pasta_recem_criada.click()
+                driver.execute_script("arguments[0].click();", pasta_recem_criada)
                 logging.info(f"Pasta '{nome_da_pasta}' criada e acessada.")
 
         logging.info(f"Estrutura de pasta '{caminho_da_pasta}' sincronizada com sucesso.")
