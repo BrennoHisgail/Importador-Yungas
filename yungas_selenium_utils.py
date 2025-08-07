@@ -1,3 +1,7 @@
+# yungas_selenium_utils.py
+
+"""Módulo de utilitários para automação da interface web da Yungas usando Selenium."""
+
 import logging
 import time
 from typing import Optional
@@ -38,9 +42,13 @@ def iniciar_driver(user_data_dir: Optional[str] = None, profile_directory: Optio
         options = uc.ChromeOptions()
         
         # --- INÍCIO DA MUDANÇA ---
-        # Adiciona argumentos que ajudam a evitar problemas de conexão em VMs e containers.
+        # Adiciona argumentos que ajudam a evitar problemas de conexão e estabilidade em VMs.
         options.add_argument('--no-sandbox')
         options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-gpu') # Desabilita aceleração de GPU, comum em VMs
+        options.add_argument('--start-maximized') # Inicia maximizado
+        options.add_argument('--disable-extensions') # Desabilita extensões que possam interferir
+        options.add_argument('--ignore-certificate-errors') # Ignora erros de certificado
         # --- FIM DA MUDANÇA ---
         
         if user_data_dir and profile_directory:
