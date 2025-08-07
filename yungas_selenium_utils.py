@@ -1,9 +1,3 @@
-"""Módulo de utilitários para automação da interface web da Yungas usando Selenium.
-
-Fornece funcionalidades para inicializar um driver de navegador furtivo,
-executar o fluxo de login de duas etapas e interagir com o módulo de materiais.
-"""
-
 import logging
 import time
 from typing import Optional
@@ -16,18 +10,17 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 # --- Constants for Selectors and Configuration ---
-# Centralizar seletores aqui facilita a manutenção se a interface da Yungas mudar.
 YUNGAS_BASE_URL = "https://app.yungas.com.br"
 LOGIN_TIMEOUT_SECONDS = 20
 ACTION_TIMEOUT_SECONDS = 15
-POST_LOGIN_TIMEOUT_SECONDS = 60
+POST_LOGIN_TIMEOUT_SECONDS = 90
 
 # --- Selectors for Login Flow ---
 EMAIL_FIELD_ID = "username-password"
 CONTINUE_BUTTON_ID = "submit-button"
 PASSWORD_FIELD_ID = "password"
 FINAL_LOGIN_BUTTON_ID = "password-submit-button"
-POST_LOGIN_SUCCESS_XPATH = "//span[text()='Caixa de entrada']"
+POST_LOGIN_SUCCESS_XPATH = "//span[contains(text(), 'Materiais')]"
 
 # --- Selectors for Materiais Module ---
 MATERIALS_MENU_BUTTON_XPATH = "//span[contains(text(), 'Materiais')]"
@@ -39,11 +32,16 @@ FOLDER_BY_NAME_XPATH = "//span[contains(@class, 'card-title') and text()='%s']"
 
 def iniciar_driver(user_data_dir: Optional[str] = None, profile_directory: Optional[str] = None) -> Optional[WebDriver]:
     """
-    Inicializa uma instância do Undetected ChromeDriver.
-    Se os caminhos de perfil forem fornecidos, tenta usá-los para contornar CAPTCHAs.
+    Inicializa uma instância do Undetected ChromeDriver com opções de compatibilidade.
     """
     try:
         options = uc.ChromeOptions()
+        
+        # --- INÍCIO DA MUDANÇA ---
+        # Adiciona argumentos que ajudam a evitar problemas de conexão em VMs e containers.
+        options.add_argument('--no-sandbox')
+        options.add_argument('--disable-dev-shm-usage')
+        # --- FIM DA MUDANÇA ---
         
         if user_data_dir and profile_directory:
             logging.info(f"Tentando iniciar o Chrome com o perfil: {profile_directory}")
