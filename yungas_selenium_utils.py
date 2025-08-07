@@ -1,6 +1,8 @@
-# yungas_selenium_utils.py
+"""Módulo de utilitários para automação da interface web da Yungas usando Selenium.
 
-"""Módulo de utilitários para automação da interface web da Yungas usando Selenium."""
+Fornece funcionalidades para inicializar um driver de navegador furtivo,
+executar o fluxo de login de duas etapas e interagir com o módulo de materiais.
+"""
 
 import logging
 import time
@@ -14,6 +16,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 
 # --- Constants for Selectors and Configuration ---
+# Centralizar seletores aqui facilita a manutenção se a interface da Yungas mudar.
 YUNGAS_BASE_URL = "https://app.yungas.com.br"
 LOGIN_TIMEOUT_SECONDS = 20
 ACTION_TIMEOUT_SECONDS = 15
@@ -34,11 +37,21 @@ CONFIRM_CREATE_FOLDER_BUTTON_XPATH = "//button[text()='Salvar']"
 FOLDER_BY_NAME_XPATH = "//span[contains(@class, 'card-title') and text()='%s']"
 
 
-def iniciar_driver() -> Optional[WebDriver]:
-    """Inicializa e retorna uma instância do Undetected ChromeDriver."""
+def iniciar_driver(user_data_dir: Optional[str] = None, profile_directory: Optional[str] = None) -> Optional[WebDriver]:
+    """
+    Inicializa uma instância do Undetected ChromeDriver.
+    Se os caminhos de perfil forem fornecidos, tenta usá-los para contornar CAPTCHAs.
+    """
     try:
         options = uc.ChromeOptions()
-        options.add_argument("--disable-blink-features=AutomationControlled")
+        
+        if user_data_dir and profile_directory:
+            logging.info(f"Tentando iniciar o Chrome com o perfil: {profile_directory}")
+            options.add_argument(f"--user-data-dir={user_data_dir}")
+            options.add_argument(f'--profile-directory={profile_directory}')
+        else:
+            logging.info("Iniciando o Chrome com um perfil temporário.")
+
         driver = uc.Chrome(options=options)
         logging.info("Undetected ChromeDriver iniciado com sucesso.")
         return driver
@@ -52,19 +65,38 @@ def fazer_login(driver: WebDriver, user: str, password: str) -> bool:
         driver.get(YUNGAS_BASE_URL)
         driver.maximize_window()
         logging.info(f"Navegando para a página inicial: {YUNGAS_BASE_URL}")
+        
         wait = WebDriverWait(driver, LOGIN_TIMEOUT_SECONDS)
+
+        # Etapa 1: Inserir o E-mail
+        logging.info("Procurando campo de e-mail...")
         campo_usuario = wait.until(EC.presence_of_element_located((By.ID, EMAIL_FIELD_ID)))
         campo_usuario.send_keys(user)
+        
+        logging.info("Clicando em 'Continuar'...")
         driver.find_element(By.ID, CONTINUE_BUTTON_ID).click()
+        
+        # Pausa Estratégica
         logging.info("Pausando por 15 segundos para aguardar a página de senha...")
         time.sleep(15)
+        
+        # Etapa 2: Inserir a Senha
+        logging.info("Procurando campo de senha...")
         campo_senha = wait.until(EC.presence_of_element_located((By.ID, PASSWORD_FIELD_ID)))
         campo_senha.send_keys(password)
+        
+        # Etapa 3: Clicar em Entrar e Aguardar Confirmação
+        logging.info("Clicando no botão final 'Entrar'...")
         driver.find_element(By.ID, FINAL_LOGIN_BUTTON_ID).click()
+        
+        logging.info(f"Aguardando confirmação de login por até {POST_LOGIN_TIMEOUT_SECONDS} segundos...")
+        
         long_wait = WebDriverWait(driver, POST_LOGIN_TIMEOUT_SECONDS)
         long_wait.until(EC.presence_of_element_located((By.XPATH, POST_LOGIN_SUCCESS_XPATH)))
+        
         logging.info("Login finalizado com sucesso!")
         return True
+        
     except Exception as e:
         logging.error(f"Falha durante o processo de login: {e}")
         return False
@@ -74,29 +106,32 @@ def navegar_para_materiais(driver: WebDriver) -> bool:
     try:
         logging.info("Navegando para o Módulo de Materiais...")
         wait = WebDriverWait(driver, ACTION_TIMEOUT_SECONDS)
+
         botao_materiais = wait.until(EC.element_to_be_clickable((By.XPATH, MATERIALS_MENU_BUTTON_XPATH)))
         botao_materiais.click()
+        
         wait.until(EC.presence_of_element_located((By.XPATH, CREATE_FOLDER_BUTTON_XPATH)))
+        
         logging.info("Navegação para o Módulo de Materiais bem-sucedida.")
         return True
+
     except Exception as e:
         logging.error(f"Falha ao navegar para o Módulo de Materiais: {e}")
         return False
 
 def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bool:
     """
-    Garante que uma estrutura de pastas exista na Yungas, com esperas inteligentes.
+    Garante que uma estrutura de pastas exista na Yungas, criando-a se necessário.
     """
     try:
         logging.info(f"Processando caminho de pasta: '{caminho_da_pasta}'")
-        # Começa sempre navegando para a raiz de Materiais para garantir um ponto de partida limpo
         navegar_para_materiais(driver)
         
         partes_do_caminho = caminho_da_pasta.split('/')
         
         for nome_da_pasta in partes_do_caminho:
             wait = WebDriverWait(driver, ACTION_TIMEOUT_SECONDS)
-            time.sleep(2) # Pausa para a interface carregar a lista de pastas
+            time.sleep(2)
 
             try:
                 seletor_pasta_existente = FOLDER_BY_NAME_XPATH % nome_da_pasta
@@ -115,15 +150,10 @@ def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bo
                 botao_confirmar = wait.until(EC.element_to_be_clickable((By.XPATH, CONFIRM_CREATE_FOLDER_BUTTON_XPATH)))
                 botao_confirmar.click()
                 
-                # --- INÍCIO DA MUDANÇA: ESPERA INTELIGENTE ---
                 logging.info("Aguardando a conclusão da criação da pasta...")
-                # A melhor forma de saber que o pop-up fechou é esperar que um elemento da
-                # página principal, como o próprio botão "Nova pasta", fique clicável novamente.
                 wait.until(EC.element_to_be_clickable((By.XPATH, CREATE_FOLDER_BUTTON_XPATH)))
                 logging.info("Criação concluída. A interface está pronta para a próxima ação.")
-                # --- FIM DA MUDANÇA ---
                 
-                # Agora que a UI está estável, procuramos pela nova pasta para entrar nela.
                 pasta_recem_criada = wait.until(EC.presence_of_element_located((By.XPATH, seletor_pasta_existente)))
                 driver.execute_script("arguments[0].click();", pasta_recem_criada)
                 logging.info(f"Pasta '{nome_da_pasta}' criada e acessada.")
