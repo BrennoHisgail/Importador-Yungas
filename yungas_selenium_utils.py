@@ -10,22 +10,21 @@ import logging
 import time
 from typing import Optional
 
-# Para esta abordagem, usamos o Selenium padrão, não o undetected_chromedriver.
 from selenium import webdriver
+from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webdriver import WebDriver
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
+from webdriver_manager.chrome import ChromeDriverManager
 
 # --- Constants for Selectors and Configuration ---
 YUNGAS_BASE_URL = "https://app.yungas.com.br"
 ACTION_TIMEOUT_SECONDS = 15
 
 # --- Selectors for Verification and Navigation ---
-# Seletor para um elemento que confirma que o login está ativo.
-# Usamos o botão "Materiais" como nosso alvo.
 LOGIN_SUCCESS_XPATH = "//span[contains(text(), 'Materiais')]"
 
 # --- Selectors for Materiais Module ---
@@ -44,10 +43,12 @@ def conectar_driver_existente(debugging_port: int) -> Optional[WebDriver]:
         logging.info(f"Tentando conectar-se ao Chrome na porta de depuração: {debugging_port}...")
         
         options = Options()
-        # A opção "debuggerAddress" é a chave para conectar a um navegador existente.
         options.add_experimental_option("debuggerAddress", f"127.0.0.1:{debugging_port}")
         
-        driver = webdriver.Chrome(options=options)
+        # O webdriver-manager baixa e configura o driver correto automaticamente.
+        service = ChromeService(ChromeDriverManager().install())
+        
+        driver = webdriver.Chrome(service=service, options=options)
         logging.info("Conexão com o navegador existente estabelecida com sucesso.")
         return driver
     except Exception as e:
@@ -61,14 +62,13 @@ def verificar_login(driver: WebDriver) -> bool:
         driver.get(YUNGAS_BASE_URL)
         driver.maximize_window()
         
-        # Espera por um elemento que só existe após o login
         wait = WebDriverWait(driver, ACTION_TIMEOUT_SECONDS)
         wait.until(EC.presence_of_element_located((By.XPATH, LOGIN_SUCCESS_XPATH)))
         
         logging.info("Verificação de login bem-sucedida. Sessão ativa.")
         return True
     except TimeoutException:
-        logging.error("Login não detetado. A página não parece estar logada. Por favor, faça o login manualmente na janela do Chrome 'especial' e tente novamente.")
+        logging.error("Login não detetado. A página não parece estar logada.")
         return False
     except Exception as e:
         logging.error(f"Ocorreu um erro inesperado ao verificar o login: {e}")
@@ -92,7 +92,7 @@ def garantir_existencia_da_pasta(driver: WebDriver, caminho_da_pasta: str) -> bo
     """Garante que uma estrutura de pastas exista na Yungas, criando-a se necessário."""
     try:
         logging.info(f"Processando caminho de pasta: '{caminho_da_pasta}'")
-        navegar_para_materiais(driver) # Ponto de partida
+        navegar_para_materiais(driver)
         
         partes_do_caminho = caminho_da_pasta.split('/')
         
