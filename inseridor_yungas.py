@@ -11,8 +11,9 @@ import os
 import configparser
 from typing import List
 
+# A função de importação mudou para a nova lógica
 from yungas_selenium_utils import (
-    iniciar_driver, 
+    conectar_driver_existente, 
     verificar_login, 
     navegar_para_materiais,
     garantir_existencia_da_pasta
@@ -32,7 +33,6 @@ def get_local_folder_structure(root_dir: str) -> List[str]:
         if relative_path != '.':
             folder_paths.add(relative_path.replace('\\', '/'))
     
-    # Ordena a lista para garantir que as pastas pai sejam criadas antes das filhas
     return sorted(list(folder_paths))
 
 def main() -> None:
@@ -41,20 +41,18 @@ def main() -> None:
     config = configparser.ConfigParser()
     config.read('config.ini')
     
-    # Lê as configurações de caminhos e do Selenium do arquivo .ini
     downloads_dir = config.get('Paths', 'downloads_dir', fallback='downloads')
-    user_data_dir = config.get('Selenium', 'user_data_dir', fallback=None)
-    profile_directory = config.get('Selenium', 'profile_directory', fallback=None)
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
     logging.info("Iniciando Fase 2: Robô de Inserção.")
-    # Passa as configurações de perfil lidas do .ini para a função que inicia o robô
-    driver = iniciar_driver(user_data_dir=user_data_dir, profile_directory=profile_directory)
+    
+    # --- MUDANÇA AQUI ---
+    # Conecta-se ao Chrome na porta 9222, que foi aberta manualmente.
+    driver = conectar_driver_existente(debugging_port=9222)
 
     if driver:
         try:
-            # A única verificação necessária agora é se o login está ativo no perfil
             if verificar_login(driver):
                 if navegar_para_materiais(driver):
                     
@@ -69,14 +67,13 @@ def main() -> None:
                             sucesso = garantir_existencia_da_pasta(driver, pasta)
                             if not sucesso:
                                 logging.error(f"Erro crítico ao criar a pasta '{pasta}'. Abortando.")
-                                break # Interrompe o processo se uma pasta falhar
+                                break
                     
                     logging.info("Fase de sincronização de pastas concluída.")
-                    # Futuramente, aqui começará a etapa de upload de arquivos
 
         finally:
-            driver.quit()
-            logging.info("Navegador fechado.")
+            # Não usamos mais driver.quit(), pois não queremos fechar o navegador manual.
+            logging.info("Script finalizado. O navegador permanece aberto.")
 
 if __name__ == "__main__":
     main()
