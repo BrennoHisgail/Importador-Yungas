@@ -1,3 +1,5 @@
+# yungas_selenium_utils.py
+
 """Módulo de utilitários para automação da interface web da Yungas usando Selenium."""
 
 import logging
@@ -13,15 +15,7 @@ from selenium.common.exceptions import TimeoutException
 
 # --- Constants for Selectors and Configuration ---
 YUNGAS_BASE_URL = "https://app.yungas.com.br"
-LOGIN_TIMEOUT_SECONDS = 20
 ACTION_TIMEOUT_SECONDS = 15
-POST_LOGIN_TIMEOUT_SECONDS = 90
-
-# --- Selectors for Login Flow ---
-EMAIL_FIELD_ID = "username-password"
-CONTINUE_BUTTON_ID = "submit-button"
-PASSWORD_FIELD_ID = "password"
-FINAL_LOGIN_BUTTON_ID = "password-submit-button"
 POST_LOGIN_SUCCESS_XPATH = "//span[contains(text(), 'Materiais')]"
 
 # --- Selectors for Materiais Module ---
@@ -56,38 +50,24 @@ def iniciar_driver(user_data_dir: Optional[str] = None, profile_directory: Optio
         logging.error(f"Erro ao iniciar o Undetected ChromeDriver: {e}")
         return None
 
-def fazer_login(driver: WebDriver, user: str, password: str) -> bool:
-    """Navega pelo fluxo de login de 2 etapas da Yungas."""
+def verificar_login(driver: WebDriver) -> bool:
+    """Verifica se a sessão do navegador já está logada na plataforma."""
     try:
+        logging.info("Verificando se a sessão já está logada...")
         driver.get(YUNGAS_BASE_URL)
         driver.maximize_window()
-        logging.info(f"Navegando para a página inicial: {YUNGAS_BASE_URL}")
         
-        # Verifica se já estamos logados (herdado do perfil)
-        try:
-            WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.XPATH, POST_LOGIN_SUCCESS_XPATH)))
-            logging.info("Login herdado do perfil do Chrome. Pulando a etapa de login.")
-            return True
-        except TimeoutException:
-            logging.info("Não está logado. Iniciando o fluxo de login manual.")
-
-        wait = WebDriverWait(driver, LOGIN_TIMEOUT_SECONDS)
-        campo_usuario = wait.until(EC.presence_of_element_located((By.ID, EMAIL_FIELD_ID)))
-        campo_usuario.send_keys(user)
-        driver.find_element(By.ID, CONTINUE_BUTTON_ID).click()
-        time.sleep(5)
-        campo_senha = wait.until(EC.presence_of_element_located((By.ID, PASSWORD_FIELD_ID)))
-        campo_senha.send_keys(password)
-        driver.find_element(By.ID, FINAL_LOGIN_BUTTON_ID).click()
+        # Espera por um elemento que só existe após o login
+        wait = WebDriverWait(driver, ACTION_TIMEOUT_SECONDS)
+        wait.until(EC.presence_of_element_located((By.XPATH, POST_LOGIN_SUCCESS_XPATH)))
         
-        long_wait = WebDriverWait(driver, POST_LOGIN_TIMEOUT_SECONDS)
-        long_wait.until(EC.presence_of_element_located((By.XPATH, POST_LOGIN_SUCCESS_XPATH)))
-        
-        logging.info("Login finalizado com sucesso!")
+        logging.info("Verificação de login bem-sucedida. Sessão ativa.")
         return True
-        
+    except TimeoutException:
+        logging.error("Login não detectado. Por favor, faça o login manualmente no perfil do Chrome e tente novamente.")
+        return False
     except Exception as e:
-        logging.error(f"Falha durante o processo de login: {e}")
+        logging.error(f"Ocorreu um erro inesperado ao verificar o login: {e}")
         return False
 
 def navegar_para_materiais(driver: WebDriver) -> bool:
