@@ -1,3 +1,5 @@
+# inseridor_yungas.py
+
 """Script orquestrador para a Fase 2: Inserção na Plataforma Yungas."""
 
 import argparse
@@ -5,7 +7,7 @@ import logging
 import os
 import configparser
 import time
-from typing import List
+from typing import List, Optional, Dict
 
 from yungas_selenium_utils import (
     iniciar_driver, 
@@ -15,9 +17,7 @@ from yungas_selenium_utils import (
 )
 
 def get_local_folder_structure(root_dir: str) -> List[str]:
-    """
-    Lê uma estrutura de diretórios local e retorna uma lista ordenada de caminhos relativos.
-    """
+    """Lê uma estrutura de diretórios local e retorna uma lista ordenada de caminhos relativos."""
     folder_paths = set()
     if not os.path.isdir(root_dir):
         logging.warning(f"Diretório de downloads '{root_dir}' não encontrado.")
@@ -36,20 +36,18 @@ def main() -> None:
     config = configparser.ConfigParser()
     config.read('config.ini')
     
-    # Lê as configurações de caminhos e do Selenium do arquivo .ini
     downloads_dir = config.get('Paths', 'downloads_dir', fallback='downloads')
     user_data_dir = config.get('Selenium', 'user_data_dir', fallback=None)
     profile_directory = config.get('Selenium', 'profile_directory', fallback=None)
     
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     
-    parser = argparse.ArgumentParser(description="Fase 2: Robô para inserir arquivos na Yungas.")
-    parser.add_argument('--yungas-user', required=True, help='Usuário de acesso da plataforma Yungas.')
+    parser = argparse.ArgumentParser(description="Fase 2: Robô para inserir ficheiros na Yungas.")
+    parser.add_argument('--yungas-user', required=True, help='Utilizador de acesso da plataforma Yungas.')
     parser.add_argument('--yungas-pass', required=True, help='Senha de acesso da plataforma Yungas.')
     args = parser.parse_args()
 
     logging.info("Iniciando Fase 2: Robô de Inserção.")
-    # Passa as configurações de perfil lidas do .ini para a função que inicia o robô
     driver = iniciar_driver(user_data_dir=user_data_dir, profile_directory=profile_directory)
 
     if driver:
@@ -61,7 +59,7 @@ def main() -> None:
                     pastas_a_sincronizar = get_local_folder_structure(downloads_dir)
                     
                     if not pastas_a_sincronizar:
-                        logging.info("Nenhuma estrutura de pastas encontrada em '/downloads' para sincronizar.")
+                        logging.info("Nenhuma estrutura de pastas encontrada para sincronizar.")
                     else:
                         logging.info(f"{len(pastas_a_sincronizar)} pastas para sincronizar.")
                         for pasta in pastas_a_sincronizar:
@@ -71,7 +69,7 @@ def main() -> None:
                                 break
                     
                     logging.info("Fase de sincronização de pastas concluída.")
-                    # Futuramente, aqui começará a etapa de upload de arquivos
+                    # A etapa de upload de ficheiros virá aqui no futuro.
 
         finally:
             driver.quit()

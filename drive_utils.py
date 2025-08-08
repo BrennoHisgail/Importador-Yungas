@@ -1,10 +1,6 @@
 # drive_utils.py
 
-"""Módulo de utilitários para interagir com a API do Google Drive v3.
-
-Fornece funcionalidades para autenticação, download e exportação recursiva de arquivos,
-sanitização de nomes, e geração de inventário de uma estrutura de pastas para verificação.
-"""
+"""Módulo de utilitários para interagir com a API do Google Drive v3."""
 
 import os
 import logging
@@ -31,7 +27,7 @@ DOWNLOAD_DELAY_SECONDS: int = 5
 
 
 def _sanitize_path_component(name: str) -> str:
-    """Executa uma limpeza pesada em nomes de arquivos/pastas para o sistema de arquivos."""
+    """Executa uma limpeza pesada em nomes de ficheiros/pastas para o sistema de ficheiros."""
     safe_name = name.replace('\n', ' ').replace('\r', ' ')
     safe_name = re.sub(r'\s+', ' ', safe_name).strip()
     invalid_os_chars = ['/', '\\', ':', '*', '?', '"', '<', '>', '|']
@@ -78,7 +74,7 @@ def setup_google_drive_service() -> Optional[Resource]:
 
 def download_file(service: Resource, file_id: str, safe_file_name: str, download_folder: str, 
                   retries: int = DOWNLOAD_RETRIES, delay: int = DOWNLOAD_DELAY_SECONDS) -> Dict:
-    """Baixa um arquivo binário, com retentativas e suporte a caminhos longos."""
+    """Baixa um ficheiro binário, com retentativas e suporte a caminhos longos."""
     for attempt in range(retries):
         try:
             request = service.files().get_media(fileId=file_id)
@@ -99,14 +95,14 @@ def download_file(service: Resource, file_id: str, safe_file_name: str, download
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
-                logging.error(f"Todas as tentativas para o arquivo '{safe_file_name}' falharam.")
+                logging.error(f"Todas as tentativas para o ficheiro '{safe_file_name}' falharam.")
                 return {'status': 'falha', 'filepath': None, 'attempts': attempt + 1, 'error': error_message}
     return {'status': 'falha', 'filepath': None, 'attempts': retries, 'error': 'Loop de tentativas finalizado inesperadamente.'}
 
 
 def export_google_doc(service: Resource, file_id: str, safe_file_name: str, download_folder: str, 
                       retries: int = DOWNLOAD_RETRIES, delay: int = DOWNLOAD_DELAY_SECONDS) -> Dict:
-    """Exporta um arquivo Google Docs como PDF, com retentativas e suporte a caminhos longos."""
+    """Exporta um ficheiro Google Docs como PDF, com retentativas e suporte a caminhos longos."""
     for attempt in range(retries):
         try:
             request = service.files().export_media(fileId=file_id, mimeType='application/pdf')
@@ -128,37 +124,43 @@ def export_google_doc(service: Resource, file_id: str, safe_file_name: str, down
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
-                logging.error(f"Todas as tentativas para o arquivo '{safe_file_name}' falharam.")
+                logging.error(f"Todas as tentativas para o ficheiro '{safe_file_name}' falharam.")
                 return {'status': 'falha', 'filepath': None, 'attempts': attempt + 1, 'error': error_message}
     return {'status': 'falha', 'filepath': None, 'attempts': retries, 'error': 'Loop de tentativas finalizado inesperadamente.'}
 
 
 def get_drive_file_inventory(service: Resource, folder_id: str, parent_path: str = "") -> List[Dict]:
-    """Gera um inventário completo de arquivos com todas as informações necessárias."""
+    """Gera um inventário completo de ficheiros com todas as informações necessárias."""
     inventory = []
     ignored_mime_types = ['application/vnd.google-apps.shortcut']
     try:
         fields = "files(id, name, mimeType, md5Checksum)"
         query = f"'{folder_id}' in parents and trashed = false"
-        # Adicionar aqui a lógica de paginação se necessário no futuro
-        results = service.files().list(q=query, pageSize=1000, fields=fields).execute()
-        items = results.get('files', [])
-        for item in items:
-            safe_name = _sanitize_path_component(item['name'])
-            current_path = os.path.join(parent_path, safe_name)
-            if item['mimeType'] == 'application/vnd.google-apps.folder':
-                inventory.extend(get_drive_file_inventory(service, item['id'], current_path))
-            else:
-                task = {
-                    'id': item['id'],
-                    'original_name': item['name'],
-                    'safe_name': safe_name,
-                    'relative_path': current_path.replace('\\', '/'),
-                    'md5Checksum': item.get('md5Checksum'),
-                    'mimeType': item['mimeType']
-                }
-                task['status'] = 'ignorado' if item['mimeType'] in ignored_mime_types else 'pendente'
-                inventory.append(task)
+        
+        request = service.files().list(q=query, pageSize=1000, fields=fields, supportsAllDrives=True, includeItemsFromAllDrives=True)
+        
+        while request is not None:
+            results = request.execute()
+            items = results.get('files', [])
+            for item in items:
+                safe_name = _sanitize_path_component(item['name'])
+                current_path = os.path.join(parent_path, safe_name)
+                if item['mimeType'] == 'application/vnd.google-apps.folder':
+                    inventory.extend(get_drive_file_inventory(service, item['id'], current_path))
+                else:
+                    task = {
+                        'id': item['id'],
+                        'original_name': item['name'],
+                        'safe_name': safe_name,
+                        'relative_path': current_path.replace('\\', '/'),
+                        'md5Checksum': item.get('md5Checksum'),
+                        'mimeType': item['mimeType']
+                    }
+                    task['status'] = 'ignorado' if item['mimeType'] in ignored_mime_types else 'pendente'
+                    inventory.append(task)
+            
+            request = service.files().list_next(previous_request=request, previous_response=results)
+            
     except Exception as e:
         logging.error(f"Falha ao gerar o inventário do Drive para a pasta ID '{folder_id}': {e}")
     return inventory
